@@ -25,6 +25,7 @@ pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {KillerCoin} from "./KillerCoin.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
 /**
  * @title KillerEngine
@@ -50,6 +51,10 @@ contract KillerDSCEngine {
     /////////////////////////////
 
     KillerCoin private immutable i_killer;
+    uint256 private constant PRECISION = 1e18;
+    uint256 private constant LIQUIDATION_THRESHOLD = 80;
+    uint256 private constant LIQUIDATION_PRESISION = 100;
+    uint256 private constant IDEAL_HEALTH_FACTOR = 1e18;
     mapping(address tokenAdd => address pricefeedAdd) private s_ValidCollateralTokens;
     mapping(address user => uint256 amount) private s_killerMinted;
     mapping(address user => mapping(address tokenAdd => uint256 amount)) private s_depositedCollateral;
@@ -134,8 +139,11 @@ contract KillerDSCEngine {
         _burnKiller(msg.sender, killerToBurn);
     }
 
+    function liquidate() public {}
+
     function getUserInformation(address user)
         public
+        view
         ValidAddress(user)
         returns (uint256 collateralValueInUSD, uint256 killerMinted)
     {
@@ -145,15 +153,32 @@ contract KillerDSCEngine {
         killerMinted = s_killerMinted[user];
     }
 
-    function getUSDValue(address tokenAddress, uint256 amount) public returns (uint256) {}
+    function getUSDValue(address tokenAddress, uint256 amount) public view ValidCollateral(tokenAddress) returns (uint256) {
+        AggregatorV3Interface datafeed = AggregatorV3Interface(s_ValidCollateralTokens[tokenAddress]);
+        (
+            /* uint80 roundID */
+            ,
+            int256 answer,
+            /*uint startedAt*/
+            ,
+            /*uint timeStamp*/
+            ,
+            /*uint80 answeredInRound*/
+        ) = datafeed.latestRoundData();
 
-    function calculateHealthFactor(address user) public ValidAddress(user) returns (uint256) {
+        uint256 decimals = datafeed.decimals();
+        uint256 decimalReversePrecision = 10 ** (18 - decimals);
+
+        return ((uint256(answer) * decimalReversePrecision) * amount) / PRECISION;
+    }
+
+    function calculateHealthFactor(address user) public view ValidAddress(user) returns (uint256) {
         (uint256 collateralValueInUSD, uint256 killerMinted) = getUserInformation(user);
         if (killerMinted == 0) {
             return type(uint256).max;
         }
 
-        uint256 collateralThreshold = (collateralValueInUSD * 80) / 100;
+        uint256 collateralThreshold = (collateralValueInUSD * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRESISION;
         uint256 healthFactor = (collateralThreshold) / killerMinted;
         return healthFactor;
     }
@@ -210,9 +235,9 @@ contract KillerDSCEngine {
         i_killer.burn(_amount);
     }
 
-    function _revertIfHealthFactorIsBroken(address _to) internal {
+    function _revertIfHealthFactorIsBroken(address _to) internal view {
         uint256 userHealthFactor = calculateHealthFactor(_to);
-        if (userHealthFactor < 1e18) {
+        if (userHealthFactor < IDEAL_HEALTH_FACTOR) {
             revert KillerDSCEngine__HealthFactorIsBroken();
         }
     }
