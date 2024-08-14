@@ -41,8 +41,9 @@ contract KillerDSCEngine {
     error KillerDSCEngine__TokensArrayLengthAndPricefeedsArrayLengthUnEqual();
     error KillerDSCEngine__TokenNotAllowedAsColletaral(address tokenAdd);
     error KillerDSCEngine__InvalidAmount();
-    error KillerDSCEngine__InvalidUSER();
+    error KillerDSCEngine__InvalidAddress();
     error KillerDSCEngine__TransferedFailed();
+    error KillerDSCEngine__HealthFactorIsBroken();
 
     /////////////////////////////
     ////    State Variables  ////
@@ -52,6 +53,7 @@ contract KillerDSCEngine {
     mapping(address tokenAdd => address pricefeedAdd) private s_ValidCollateralTokens;
     mapping(address user => uint256 amount) private s_killerMinted;
     mapping(address user => mapping(address tokenAdd => uint256 amount)) private s_depositedCollateral;
+    address[] private s_tokenAdds;
 
     /////////////////////////////
     ////     Events          ////
@@ -66,9 +68,9 @@ contract KillerDSCEngine {
     ////  Modifiers          ////
     /////////////////////////////
 
-    modifier ValidCollateral(address tokenAdd) {
-        if (s_ValidCollateralTokens[tokenAdd] == address(0)) {
-            revert KillerDSCEngine__TokenNotAllowedAsColletaral(tokenAdd);
+    modifier ValidCollateral(address _tokenAdd) {
+        if (s_ValidCollateralTokens[_tokenAdd] == address(0)) {
+            revert KillerDSCEngine__TokenNotAllowedAsColletaral(_tokenAdd);
         }
         _;
     }
@@ -76,6 +78,13 @@ contract KillerDSCEngine {
     modifier ValidAmount(uint256 amount) {
         if (amount == 0) {
             revert KillerDSCEngine__InvalidAmount();
+        }
+        _;
+    }
+
+    modifier ValidAddress(address adds) {
+        if (adds == address(0)) {
+            revert KillerDSCEngine__InvalidAddress();
         }
         _;
     }
@@ -90,8 +99,8 @@ contract KillerDSCEngine {
         }
         for (uint256 i = 0; i < validTokenAdd.length; i++) {
             s_ValidCollateralTokens[validTokenAdd[i]] = pricefeedAddes[i];
+            s_tokenAdds.push(validTokenAdd[i]);
         }
-
         i_killer = new KillerCoin();
     }
 
@@ -102,36 +111,51 @@ contract KillerDSCEngine {
         mintKiller(killerToMint);
     }
 
-    function depositCollateral(address tokenCollateralAdd, uint256 collateralAmount) public {
-        if (msg.sender == address(0)) {
-            revert KillerDSCEngine__InvalidUSER();
-        }
+    function depositCollateral(address tokenCollateralAdd, uint256 collateralAmount) public ValidAddress(msg.sender) {
         _depositCollateral(msg.sender, tokenCollateralAdd, collateralAmount);
     }
 
-    function mintKiller(uint256 killerToMint) public ValidAmount(killerToMint) {
-        if (msg.sender == address(0)) {
-            revert KillerDSCEngine__InvalidUSER();
-        }
+    function mintKiller(uint256 killerToMint) public ValidAmount(killerToMint) ValidAddress(msg.sender) {
         _mintKiller(msg.sender, killerToMint);
     }
 
     function redeemCollateralAndBurnKiller(address tokenCollateralAdd, uint256 collateralAmount, uint256 killerToBurn)
         public
-    {}
+    {
+        redeemCollateral(tokenCollateralAdd, collateralAmount);
+        burnKiller(killerToBurn);
+    }
 
-    function redeemCollateral(address tokenCollateralAdd, uint256 collateralAmount) public {
-        if (msg.sender == address(0)) {
-            revert KillerDSCEngine__InvalidUSER();
-        }
+    function redeemCollateral(address tokenCollateralAdd, uint256 collateralAmount) public ValidAddress(msg.sender) {
         _redeemCollateral(msg.sender, tokenCollateralAdd, collateralAmount);
     }
 
-    function burnKiller(uint256 killerToBurn) public {
-        if (msg.sender == address(0)) {
-            revert KillerDSCEngine__InvalidUSER();
-        }
+    function burnKiller(uint256 killerToBurn) public ValidAddress(msg.sender) {
         _burnKiller(msg.sender, killerToBurn);
+    }
+
+    function getUserInformation(address user)
+        public
+        ValidAddress(user)
+        returns (uint256 collateralValueInUSD, uint256 killerMinted)
+    {
+        for (uint256 i = 0; i < s_tokenAdds.length; i++) {
+            collateralValueInUSD += getUSDValue(s_tokenAdds[i], s_depositedCollateral[user][s_tokenAdds[i]]);
+        }
+        killerMinted = s_killerMinted[user];
+    }
+
+    function getUSDValue(address tokenAddress, uint256 amount) public returns (uint256) {}
+
+    function calculateHealthFactor(address user) public ValidAddress(user) returns (uint256) {
+        (uint256 collateralValueInUSD, uint256 killerMinted) = getUserInformation(user);
+        if (killerMinted == 0) {
+            return type(uint256).max;
+        }
+
+        uint256 collateralThreshold = (collateralValueInUSD * 80) / 100;
+        uint256 healthFactor = (collateralThreshold) / killerMinted;
+        return healthFactor;
     }
 
     function _depositCollateral(address _to, address _tokenCollateral, uint256 _amount)
@@ -186,5 +210,10 @@ contract KillerDSCEngine {
         i_killer.burn(_amount);
     }
 
-    function _revertIfHealthFactorIsBroken(address _to) internal {}
+    function _revertIfHealthFactorIsBroken(address _to) internal {
+        uint256 userHealthFactor = calculateHealthFactor(_to);
+        if (userHealthFactor < 1e18) {
+            revert KillerDSCEngine__HealthFactorIsBroken();
+        }
+    }
 }
