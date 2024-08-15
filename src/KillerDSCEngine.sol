@@ -127,8 +127,8 @@ contract KillerDSCEngine {
     function redeemCollateralAndBurnKiller(address tokenCollateralAdd, uint256 collateralAmount, uint256 killerToBurn)
         public
     {
-        redeemCollateral(tokenCollateralAdd, collateralAmount);
         burnKiller(killerToBurn);
+        redeemCollateral(tokenCollateralAdd, collateralAmount);
     }
 
     function redeemCollateral(address tokenCollateralAdd, uint256 collateralAmount) public ValidAddress(msg.sender) {
@@ -147,13 +147,19 @@ contract KillerDSCEngine {
         ValidAddress(user)
         returns (uint256 collateralValueInUSD, uint256 killerMinted)
     {
+        collateralValueInUSD = 0;
         for (uint256 i = 0; i < s_tokenAdds.length; i++) {
             collateralValueInUSD += getUSDValue(s_tokenAdds[i], s_depositedCollateral[user][s_tokenAdds[i]]);
         }
         killerMinted = s_killerMinted[user];
     }
 
-    function getUSDValue(address tokenAddress, uint256 amount) public view ValidCollateral(tokenAddress) returns (uint256) {
+    function getUSDValue(address tokenAddress, uint256 amount)
+        public
+        view
+        ValidCollateral(tokenAddress)
+        returns (uint256)
+    {
         AggregatorV3Interface datafeed = AggregatorV3Interface(s_ValidCollateralTokens[tokenAddress]);
         (
             /* uint80 roundID */
@@ -166,7 +172,7 @@ contract KillerDSCEngine {
             /*uint80 answeredInRound*/
         ) = datafeed.latestRoundData();
 
-        uint256 decimals = datafeed.decimals();
+        uint8 decimals = datafeed.decimals();
         uint256 decimalReversePrecision = 10 ** (18 - decimals);
 
         return ((uint256(answer) * decimalReversePrecision) * amount) / PRECISION;
