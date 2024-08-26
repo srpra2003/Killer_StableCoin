@@ -222,11 +222,11 @@ contract KillerDSCEngine {
         }
     }
 
-    function _burnKiller(address _from, address _onBehalfOf, uint256 _amount) internal ValidAmount(_amount) {
-        s_killerMinted[_from] -= _amount;
-        emit KillerCoinBurned(_from, _onBehalfOf, _amount);
+    function _burnKiller(address _onBehalfOf, address _from, uint256 _amount) internal ValidAmount(_amount) {
+        s_killerMinted[_onBehalfOf] -= _amount;
+        emit KillerCoinBurned(_onBehalfOf, _from, _amount);
 
-        bool success = i_killer.transferFrom(_onBehalfOf, address(this), _amount);
+        bool success = i_killer.transferFrom(_from, address(this), _amount);
         if (!success) {
             revert KillerDSCEngine__TransferedFailed();
         }
