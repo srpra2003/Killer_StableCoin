@@ -297,4 +297,8 @@ contract KillerDSCEngine {
         uint256 healthFactor = (collateralThreshold) / killerMinted;
         return healthFactor;
     }
+
+    function getKillerTokenAddress() public view returns(address) {
+        return address(i_killer);
+    }
 }
