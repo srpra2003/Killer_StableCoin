@@ -45,6 +45,8 @@ contract KillerDSCEngine {
     error KillerDSCEngine__InvalidAddress();
     error KillerDSCEngine__TransferedFailed();
     error KillerDSCEngine__HealthFactorIsBroken();
+    error KillerDSCEngine__UserISNotUnderCollaterlized(address user);
+    error KillerDSCEngine__LiquidationFailed();
 
     /////////////////////////////
     ////    State Variables  ////
@@ -53,8 +55,9 @@ contract KillerDSCEngine {
     KillerCoin private immutable i_killer;
     uint256 private constant PRECISION = 1e18;
     uint256 private constant LIQUIDATION_THRESHOLD = 80;
-    uint256 private constant LIQUIDATION_PRESISION = 100;
+    uint256 private constant LIQUIDATION_PRECISION = 100;
     uint256 private constant IDEAL_HEALTH_FACTOR = 1e18;
+    uint256 private constant LIQUIDATION_BONUS = 10;
     mapping(address tokenAdd => address pricefeedAdd) private s_ValidCollateralTokens;
     mapping(address user => uint256 amount) private s_killerMinted;
     mapping(address user => mapping(address tokenAdd => uint256 amount)) private s_depositedCollateral;
@@ -67,7 +70,7 @@ contract KillerDSCEngine {
     event CollateralDeposited(address indexed user, address indexed tokenCollateralAdd, uint256 amount);
     event KillerCoinMinted(address indexed user, uint256 amount);
     event CollateralRedeemed(address indexed user, address indexed tokenCollateralAdd, uint256 amount);
-    event KillerCoinBurned(address indexed user, uint256 amount);
+    event KillerCoinBurned(address indexed user, address indexed onBehalfOf, uint256 amount);
 
     /////////////////////////////
     ////  Modifiers          ////
@@ -132,14 +135,110 @@ contract KillerDSCEngine {
     }
 
     function redeemCollateral(address tokenCollateralAdd, uint256 collateralAmount) public ValidAddress(msg.sender) {
-        _redeemCollateral(msg.sender, tokenCollateralAdd, collateralAmount);
+        _redeemCollateral(msg.sender, msg.sender, tokenCollateralAdd, collateralAmount);
     }
 
     function burnKiller(uint256 killerToBurn) public ValidAddress(msg.sender) {
-        _burnKiller(msg.sender, killerToBurn);
+        _burnKiller(msg.sender, msg.sender, killerToBurn);
     }
 
-    function liquidate() public {}
+    //when person1 goes undercollaterlized then anyone let suppose personx will
+    // liquidate person1 's position personx will call liquidate function where
+    // killer coin will be deducted from his account the amount will be specified by him
+    // in return personx will be given the collateral of person1 personx have to specify which
+    // token he wants in return among available in system at that time
+    /**
+     *
+     * @param tokenCollateralAdd tokenCollateral which will be incentivized
+     *  to the user who is liquidating the undercollateralized users's position
+     * @param underCollateralizedUser user who is undercollaterilized
+     * @param debtToCover the amount of debt to cover in "usd" --> make sure debtToCover is
+     *                                                                   in the precision of 1e18
+     */
+    function liquidate(address tokenCollateralAdd, address underCollateralizedUser, uint256 debtToCover)
+        public
+        ValidCollateral(tokenCollateralAdd)
+        ValidAddress(underCollateralizedUser)
+        ValidAmount(debtToCover)
+    {
+        uint256 startingUserHealthFactor = calculateHealthFactor(underCollateralizedUser);
+        if (startingUserHealthFactor >= IDEAL_HEALTH_FACTOR) {
+            revert KillerDSCEngine__UserISNotUnderCollaterlized(underCollateralizedUser);
+        }
+
+        uint256 tokenValue = calculateValueInTokensFromUSD(tokenCollateralAdd, debtToCover);
+        uint256 additionalIncentive = (tokenValue * LIQUIDATION_BONUS) / LIQUIDATION_PRECISION;
+
+        _redeemCollateral(underCollateralizedUser, msg.sender, tokenCollateralAdd, tokenValue + additionalIncentive);
+        _burnKiller(underCollateralizedUser, msg.sender, debtToCover);
+
+        uint256 endingUserHealthFactor = calculateHealthFactor(underCollateralizedUser);
+
+        if (endingUserHealthFactor < startingUserHealthFactor) {
+            revert KillerDSCEngine__LiquidationFailed();
+        }
+
+        _revertIfHealthFactorIsBroken(msg.sender);
+    }
+
+    function _depositCollateral(address _to, address _tokenCollateral, uint256 _amount)
+        internal
+        ValidCollateral(_tokenCollateral)
+        ValidAmount(_amount)
+    {
+        s_depositedCollateral[_to][_tokenCollateral] += _amount;
+        emit CollateralDeposited(_to, _tokenCollateral, _amount);
+
+        bool success = IERC20(_tokenCollateral).transferFrom(_to, address(this), _amount);
+
+        if (!success) {
+            revert KillerDSCEngine__TransferedFailed();
+        }
+    }
+
+    function _mintKiller(address _to, uint256 _amount) internal ValidAmount(_amount) {
+        s_killerMinted[_to] += _amount;
+        _revertIfHealthFactorIsBroken(_to);
+        emit KillerCoinMinted(_to, _amount);
+
+        bool isMinted = i_killer.mint(_to, _amount);
+        if (!isMinted) {
+            revert KillerDSCEngine__TransferedFailed();
+        }
+    }
+
+    function _redeemCollateral(address _from, address _to, address _tokenCollateral, uint256 _amount)
+        internal
+        ValidCollateral(_tokenCollateral)
+        ValidAmount(_amount)
+    {
+        s_depositedCollateral[_from][_tokenCollateral] -= _amount;
+        _revertIfHealthFactorIsBroken(_from);
+        emit CollateralRedeemed(_from, _tokenCollateral, _amount);
+
+        bool success = IERC20(_tokenCollateral).transferFrom(address(this), _to, _amount);
+        if (!success) {
+            revert KillerDSCEngine__TransferedFailed();
+        }
+    }
+
+    function _burnKiller(address _from, address _onBehalfOf, uint256 _amount) internal ValidAmount(_amount) {
+        s_killerMinted[_from] -= _amount;
+        emit KillerCoinBurned(_from, _onBehalfOf, _amount);
+
+        bool success = i_killer.transferFrom(_onBehalfOf, address(this), _amount);
+        if (!success) {
+            revert KillerDSCEngine__TransferedFailed();
+        }
+        i_killer.burn(_amount);
+    }
+
+    function _revertIfHealthFactorIsBroken(address _to) internal view {
+        uint256 userHealthFactor = calculateHealthFactor(_to);
+        if (userHealthFactor < IDEAL_HEALTH_FACTOR) {
+            revert KillerDSCEngine__HealthFactorIsBroken();
+        }
+    }
 
     function getUserInformation(address user)
         public
@@ -178,73 +277,24 @@ contract KillerDSCEngine {
         return ((uint256(answer) * decimalReversePrecision) * amount) / PRECISION;
     }
 
+    function calculateValueInTokensFromUSD(address tokenCollateralAdd, uint256 usdAmount)
+        public
+        view
+        returns (uint256)
+    {
+        uint256 usdPerToken = getUSDValue(tokenCollateralAdd, 1);
+
+        return (usdAmount * PRECISION) / usdPerToken;
+    }
+
     function calculateHealthFactor(address user) public view ValidAddress(user) returns (uint256) {
         (uint256 collateralValueInUSD, uint256 killerMinted) = getUserInformation(user);
         if (killerMinted == 0) {
             return type(uint256).max;
         }
 
-        uint256 collateralThreshold = (collateralValueInUSD * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRESISION;
+        uint256 collateralThreshold = (collateralValueInUSD * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
         uint256 healthFactor = (collateralThreshold) / killerMinted;
         return healthFactor;
-    }
-
-    function _depositCollateral(address _to, address _tokenCollateral, uint256 _amount)
-        internal
-        ValidCollateral(_tokenCollateral)
-        ValidAmount(_amount)
-    {
-        s_depositedCollateral[_to][_tokenCollateral] += _amount;
-        emit CollateralDeposited(_to, _tokenCollateral, _amount);
-
-        bool success = IERC20(_tokenCollateral).transferFrom(_to, address(this), _amount);
-
-        if (!success) {
-            revert KillerDSCEngine__TransferedFailed();
-        }
-    }
-
-    function _mintKiller(address _to, uint256 _amount) internal ValidAmount(_amount) {
-        s_killerMinted[_to] += _amount;
-        _revertIfHealthFactorIsBroken(_to);
-        emit KillerCoinMinted(_to, _amount);
-
-        bool isMinted = i_killer.mint(_to, _amount);
-        if (!isMinted) {
-            revert KillerDSCEngine__TransferedFailed();
-        }
-    }
-
-    function _redeemCollateral(address _from, address _tokenCollateral, uint256 _amount)
-        internal
-        ValidCollateral(_tokenCollateral)
-        ValidAmount(_amount)
-    {
-        s_depositedCollateral[_from][_tokenCollateral] -= _amount;
-        _revertIfHealthFactorIsBroken(_from);
-        emit CollateralRedeemed(_from, _tokenCollateral, _amount);
-
-        bool success = IERC20(_tokenCollateral).transfer(_from, _amount);
-        if (!success) {
-            revert KillerDSCEngine__TransferedFailed();
-        }
-    }
-
-    function _burnKiller(address _from, uint256 _amount) internal ValidAmount(_amount) {
-        s_killerMinted[_from] -= _amount;
-        emit KillerCoinBurned(_from, _amount);
-
-        bool success = i_killer.transferFrom(_from, address(this), _amount);
-        if (!success) {
-            revert KillerDSCEngine__TransferedFailed();
-        }
-        i_killer.burn(_amount);
-    }
-
-    function _revertIfHealthFactorIsBroken(address _to) internal view {
-        uint256 userHealthFactor = calculateHealthFactor(_to);
-        if (userHealthFactor < IDEAL_HEALTH_FACTOR) {
-            revert KillerDSCEngine__HealthFactorIsBroken();
-        }
     }
 }
