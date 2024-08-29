@@ -298,7 +298,15 @@ contract KillerDSCEngine {
         return healthFactor;
     }
 
-    function getKillerTokenAddress() public view returns(address) {
+    function getKillerTokenAddress() public view returns (address) {
         return address(i_killer);
+    }
+
+    function getLiquidationThreshold() public pure returns(uint256) {
+        return LIQUIDATION_THRESHOLD;
+    }
+
+    function getLiquidationPrecision() public pure returns(uint256) {
+        return LIQUIDATION_PRECISION;
     }
 }

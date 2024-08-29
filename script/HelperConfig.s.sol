@@ -23,6 +23,9 @@ contract HelperConfig is Script {
         if (block.chainid == 11155111) {
             activeNetconfig = getSepoliaMainnetNetworkConfig();
         }
+        else{
+            activeNetconfig = getOrCreateAnvilNetworkConfig();
+        }
     }
 
     function getSepoliaMainnetNetworkConfig() internal view returns (NetworkConfig memory) {
