@@ -22,8 +22,7 @@ contract HelperConfig is Script {
     constructor() {
         if (block.chainid == 11155111) {
             activeNetconfig = getSepoliaMainnetNetworkConfig();
-        }
-        else{
+        } else {
             activeNetconfig = getOrCreateAnvilNetworkConfig();
         }
     }
@@ -46,8 +45,8 @@ contract HelperConfig is Script {
         }
 
         vm.startBroadcast();
-        MockV3Aggregator mockWethToUSDPricefeed = new MockV3Aggregator(8, 2653);
-        MockV3Aggregator mockWbtcToUSDPricefeed = new MockV3Aggregator(8, 58113);
+        MockV3Aggregator mockWethToUSDPricefeed = new MockV3Aggregator(8, 2653e8);
+        MockV3Aggregator mockWbtcToUSDPricefeed = new MockV3Aggregator(8, 58113e8);
 
         ERC20Mock mockWethToken = new ERC20Mock();
         ERC20Mock mockWbtcToken = new ERC20Mock();

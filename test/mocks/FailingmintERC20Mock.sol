@@ -6,7 +6,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 contract FailingtransferFromERC20Mock is ERC20 {
     constructor() ERC20("ERC20Mock", "E20M") {}
 
-    function mint(address,uint256) external pure returns(bool){
+    function mint(address, uint256) external pure returns (bool) {
         return false;
     }
 

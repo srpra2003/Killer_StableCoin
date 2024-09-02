@@ -216,7 +216,7 @@ contract KillerDSCEngine {
         _revertIfHealthFactorIsBroken(_from);
         emit CollateralRedeemed(_from, _tokenCollateral, _amount);
 
-        bool success = IERC20(_tokenCollateral).transferFrom(address(this), _to, _amount);
+        bool success = IERC20(_tokenCollateral).transfer(_to, _amount);
         if (!success) {
             revert KillerDSCEngine__TransferedFailed();
         }
@@ -226,7 +226,7 @@ contract KillerDSCEngine {
         s_killerMinted[_onBehalfOf] -= _amount;
         emit KillerCoinBurned(_onBehalfOf, _from, _amount);
 
-        bool success = i_killer.transferFrom(_from, address(this), _amount);
+        bool success = i_killer.transferFrom(_from, address(this), _amount);        
         if (!success) {
             revert KillerDSCEngine__TransferedFailed();
         }
@@ -282,7 +282,7 @@ contract KillerDSCEngine {
         view
         returns (uint256)
     {
-        uint256 usdPerToken = getUSDValue(tokenCollateralAdd, 1);
+        uint256 usdPerToken = getUSDValue(tokenCollateralAdd, 1 ether);
 
         return (usdAmount * PRECISION) / usdPerToken;
     }
@@ -302,11 +302,11 @@ contract KillerDSCEngine {
         return address(i_killer);
     }
 
-    function getLiquidationThreshold() public pure returns(uint256) {
+    function getLiquidationThreshold() public pure returns (uint256) {
         return LIQUIDATION_THRESHOLD;
     }
 
-    function getLiquidationPrecision() public pure returns(uint256) {
+    function getLiquidationPrecision() public pure returns (uint256) {
         return LIQUIDATION_PRECISION;
     }
 }

@@ -6,7 +6,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 contract FailingtransferFromERC20Mock is ERC20 {
     constructor() ERC20("ERC20Mock", "E20M") {}
 
-    function mint(address account, uint256 amount) external returns(bool){
+    function mint(address account, uint256 amount) external returns (bool) {
         _mint(account, amount);
         return true;
     }
@@ -15,9 +15,7 @@ contract FailingtransferFromERC20Mock is ERC20 {
         _burn(account, amount);
     }
 
-    function transferFrom(address, address,uint256) public pure override returns (bool) {
+    function transferFrom(address, address, uint256) public pure override returns (bool) {
         return false;
     }
-
-
 }
