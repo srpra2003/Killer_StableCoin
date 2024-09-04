@@ -45,7 +45,7 @@ contract HelperConfig is Script {
         }
 
         vm.startBroadcast();
-        MockV3Aggregator mockWethToUSDPricefeed = new MockV3Aggregator(8, 2653e8);
+        MockV3Aggregator mockWethToUSDPricefeed = new MockV3Aggregator(8, 2653e7);
         MockV3Aggregator mockWbtcToUSDPricefeed = new MockV3Aggregator(8, 58113e8);
 
         ERC20Mock mockWethToken = new ERC20Mock();

@@ -26,6 +26,7 @@ pragma solidity ^0.8.26;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {KillerCoin} from "./KillerCoin.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {console} from "forge-std/console.sol";
 
 /**
  * @title KillerEngine
@@ -294,7 +295,7 @@ contract KillerDSCEngine {
         }
 
         uint256 collateralThreshold = (collateralValueInUSD * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
-        uint256 healthFactor = (collateralThreshold) / killerMinted;
+        uint256 healthFactor = (collateralThreshold * PRECISION) / killerMinted;
         return healthFactor;
     }
 

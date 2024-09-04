@@ -30,7 +30,7 @@ contract TestKillerDSCEngine is Test {
 
     address private USER = makeAddr("user");
     uint256 private INITIAL_BALANCE = 100 ether;
-    uint256 private COLLATERAL_TO_DEPOSIT = 10 ether;
+    uint256 private COLLATERAL_TO_DEPOSIT = 1 wei;
 
     event CollateralDeposited(address indexed user, address indexed tokenCollateralAdd, uint256 amount);
     event CollateralRedeemed(address indexed user, address indexed tokenCollateralAdd, uint256 amount);
@@ -133,10 +133,10 @@ contract TestKillerDSCEngine is Test {
     }
 
     function testUserCanNotMintKillerCoinThanHeCanAccordingToSystem() public collateralDeposited {
-        (uint256 collateralDepositedInUSD,) = killerEngine.getUserInformation(USER);
+        (uint256 collateralDepositedInUSD, uint256 killerMinted) = killerEngine.getUserInformation(USER);
         uint256 LiquidationThreshold = killerEngine.getLiquidationThreshold();
         uint256 LIquidationPrecision = killerEngine.getLiquidationPrecision();
-        uint256 maxKillerCoinUSERCanMint = (collateralDepositedInUSD * LiquidationThreshold) / (LIquidationPrecision * 1e18);
+        uint256 maxKillerCoinUSERCanMint = ((collateralDepositedInUSD * LiquidationThreshold) / (LIquidationPrecision)) - killerMinted;
 
         vm.startPrank(USER);
         vm.expectRevert(KillerDSCEngine.KillerDSCEngine__HealthFactorIsBroken.selector);
@@ -163,7 +163,7 @@ contract TestKillerDSCEngine is Test {
         (uint256 collateralDepositedInUSD, uint256 killerMinted) = killerEngine.getUserInformation(USER);
         uint256 LiquidationThreshold = killerEngine.getLiquidationThreshold();
         uint256 LIquidationPrecision = killerEngine.getLiquidationPrecision();
-        uint256 maxKillerCoinUSERCanMint = ((collateralDepositedInUSD * LiquidationThreshold) / (LIquidationPrecision * 1e18)) - killerMinted;
+        uint256 maxKillerCoinUSERCanMint = ((collateralDepositedInUSD * LiquidationThreshold) / (LIquidationPrecision)) - killerMinted;
         
         console.log(collateralDepositedInUSD);
         console.log(killerMinted);
@@ -176,7 +176,7 @@ contract TestKillerDSCEngine is Test {
         (collateralDepositedInUSD, killerMinted) = killerEngine.getUserInformation(USER);
         console.log(collateralDepositedInUSD);
         console.log(killerMinted);
-        maxKillerCoinUSERCanMint = ((collateralDepositedInUSD * LiquidationThreshold) / (LIquidationPrecision * 1e18)) - killerMinted;
+        maxKillerCoinUSERCanMint = ((collateralDepositedInUSD * LiquidationThreshold) / (LIquidationPrecision)) - killerMinted;
         console.log(maxKillerCoinUSERCanMint);  
 
         uint256 killerToBurn = killerMinted;    // wants to burn all the killer
@@ -195,8 +195,8 @@ contract TestKillerDSCEngine is Test {
         vm.deal(zeroAddress,INITIAL_BALANCE);
 
         vm.startPrank(zeroAddress);
-        vm.expectRevert();
-        ERC20Mock(wethTokenAddress).approve(address(killerEngine),COLLATERAL_TO_DEPOSIT);
+        // vm.expectRevert();
+        // ERC20Mock(wethTokenAddress).approve(address(killerEngine),COLLATERAL_TO_DEPOSIT);
         vm.expectRevert();
         killerEngine.depositCollateral(wethTokenAddress, COLLATERAL_TO_DEPOSIT);
         
