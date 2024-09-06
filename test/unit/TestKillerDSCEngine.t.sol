@@ -1,4 +1,4 @@
-//SPDX-Licene-Identifier: MIT
+//SPDX-License-Identifier: MIT
 
 pragma solidity ^0.8.26;
 
@@ -30,7 +30,7 @@ contract TestKillerDSCEngine is Test {
 
     address private USER = makeAddr("user");
     uint256 private INITIAL_BALANCE = 100 ether;
-    uint256 private COLLATERAL_TO_DEPOSIT = 1 wei;
+    uint256 private COLLATERAL_TO_DEPOSIT = 10 ether;
 
     event CollateralDeposited(address indexed user, address indexed tokenCollateralAdd, uint256 amount);
     event CollateralRedeemed(address indexed user, address indexed tokenCollateralAdd, uint256 amount);
@@ -136,7 +136,8 @@ contract TestKillerDSCEngine is Test {
         (uint256 collateralDepositedInUSD, uint256 killerMinted) = killerEngine.getUserInformation(USER);
         uint256 LiquidationThreshold = killerEngine.getLiquidationThreshold();
         uint256 LIquidationPrecision = killerEngine.getLiquidationPrecision();
-        uint256 maxKillerCoinUSERCanMint = ((collateralDepositedInUSD * LiquidationThreshold) / (LIquidationPrecision)) - killerMinted;
+        uint256 maxKillerCoinUSERCanMint =
+            ((collateralDepositedInUSD * LiquidationThreshold) / (LIquidationPrecision)) - killerMinted;
 
         vm.startPrank(USER);
         vm.expectRevert(KillerDSCEngine.KillerDSCEngine__HealthFactorIsBroken.selector);
@@ -145,7 +146,7 @@ contract TestKillerDSCEngine is Test {
 
     function testUserCanRedeemCollateral() public collateralDeposited {
         vm.startPrank(USER);
-        vm.expectEmit(true,true,false,true,address(killerEngine));
+        vm.expectEmit(true, true, false, true, address(killerEngine));
         emit CollateralRedeemed(USER, wethTokenAddress, COLLATERAL_TO_DEPOSIT);
         killerEngine.redeemCollateral(wethTokenAddress, COLLATERAL_TO_DEPOSIT);
         vm.stopPrank();
@@ -154,60 +155,117 @@ contract TestKillerDSCEngine is Test {
     function testUserCanNotRedeemCollateralThanHehaveDeposited() public collateralDeposited {
         vm.startPrank(USER);
         vm.expectRevert();
-        killerEngine.redeemCollateral(wethTokenAddress,COLLATERAL_TO_DEPOSIT + 10 ether);
+        killerEngine.redeemCollateral(wethTokenAddress, COLLATERAL_TO_DEPOSIT + 10 ether);
         vm.stopPrank();
     }
 
     function testUserCanRedeemCollateralAfterBurningTheKillerCoin() public collateralDeposited {
-        
         (uint256 collateralDepositedInUSD, uint256 killerMinted) = killerEngine.getUserInformation(USER);
         uint256 LiquidationThreshold = killerEngine.getLiquidationThreshold();
         uint256 LIquidationPrecision = killerEngine.getLiquidationPrecision();
-        uint256 maxKillerCoinUSERCanMint = ((collateralDepositedInUSD * LiquidationThreshold) / (LIquidationPrecision)) - killerMinted;
-        
+        uint256 maxKillerCoinUSERCanMint =
+            ((collateralDepositedInUSD * LiquidationThreshold) / (LIquidationPrecision)) - killerMinted;
+
         console.log(collateralDepositedInUSD);
         console.log(killerMinted);
-        console.log(maxKillerCoinUSERCanMint);     
+        console.log(maxKillerCoinUSERCanMint);
 
         vm.startBroadcast(USER);
-        killerEngine.mintKiller(maxKillerCoinUSERCanMint/2);
+        killerEngine.mintKiller(maxKillerCoinUSERCanMint / 2);
         vm.stopBroadcast();
 
         (collateralDepositedInUSD, killerMinted) = killerEngine.getUserInformation(USER);
         console.log(collateralDepositedInUSD);
         console.log(killerMinted);
-        maxKillerCoinUSERCanMint = ((collateralDepositedInUSD * LiquidationThreshold) / (LIquidationPrecision)) - killerMinted;
-        console.log(maxKillerCoinUSERCanMint);  
+        maxKillerCoinUSERCanMint =
+            ((collateralDepositedInUSD * LiquidationThreshold) / (LIquidationPrecision)) - killerMinted;
+        console.log(maxKillerCoinUSERCanMint);
 
-        uint256 killerToBurn = killerMinted;    // wants to burn all the killer
-        uint256 collateralToRedeem  = COLLATERAL_TO_DEPOSIT; // wants to reddem all the collateral which was deposited as the collateral of weth token     
-        
+        uint256 killerToBurn = killerMinted; // wants to burn all the killer
+        uint256 collateralToRedeem = COLLATERAL_TO_DEPOSIT; // wants to reddem all the collateral which was deposited as the collateral of weth token
+
         vm.startPrank(USER);
-        killerCoin.approve(address(killerEngine),killerToBurn);    // USER must approve the killer Engine inorder to burn that amount of token in behalf of him 
-        killerEngine.redeemCollateralAndBurnKiller(wethTokenAddress,collateralToRedeem,killerToBurn);
+        killerCoin.approve(address(killerEngine), killerToBurn); // USER must approve the killer Engine inorder to burn that amount of token in behalf of him
+        killerEngine.redeemCollateralAndBurnKiller(wethTokenAddress, collateralToRedeem, killerToBurn);
         vm.stopPrank();
-        
     }
 
     function testZeroAddressCannotDepositAndRedeemCollateralAndCannotMintOrBurnKillerCoin() public {
-
         address zeroAddress = address(0);
-        vm.deal(zeroAddress,INITIAL_BALANCE);
+        vm.deal(zeroAddress, INITIAL_BALANCE);
 
         vm.startPrank(zeroAddress);
         // vm.expectRevert();
         // ERC20Mock(wethTokenAddress).approve(address(killerEngine),COLLATERAL_TO_DEPOSIT);
         vm.expectRevert();
         killerEngine.depositCollateral(wethTokenAddress, COLLATERAL_TO_DEPOSIT);
-        
+
         vm.expectRevert();
         killerEngine.mintKiller(5000);
 
         vm.expectRevert();
-        killerEngine.redeemCollateral(wethTokenAddress,10 ether);
+        killerEngine.redeemCollateral(wethTokenAddress, 10 ether);
 
         vm.expectRevert();
         killerEngine.burnKiller(100);
+    }
+
+    function testLiquidatorCanLiquidateTheUnderCollateralizedUserPositionToMakeSystemSolvant()
+        public
+        collateralDeposited
+    {
+        // USER has put 10 ether as collateral
+        // now think that USER has minted all possible killer Coin
+
+        uint256 maxKillerCoinUSERcanStillMint = killerEngine.getAmountOfKillerCoinUserCanStillMint(USER);
+
+        vm.startPrank(USER);
+        killerEngine.mintKiller(maxKillerCoinUSERcanStillMint);
+        vm.stopPrank();
+
+        maxKillerCoinUSERcanStillMint = killerEngine.getAmountOfKillerCoinUserCanStillMint(USER);      
+        assertEq(maxKillerCoinUSERcanStillMint, 0);
+
+        console.log("Before Price drop:");
+        console.log("User killer Minted: ", killerEngine.getKillerCoinMinted(USER));
+        console.log("collateral In USD: ", killerEngine.getUSDValue(wethTokenAddress,COLLATERAL_TO_DEPOSIT));
+
+        // Lets say Accidently the pricefeed gets compromised Or the price of the collateral falls drastically
+        // Which will result the USER to go undercollateralized
+
+        address priceFeedAddress = killerEngine.getPriceFeedAddress(wethTokenAddress);
+        assert(priceFeedAddress == wethToUSDPricefeedAddress);
+
+        (,int256 answer,,,) = MockV3Aggregator(wethToUSDPricefeedAddress).latestRoundData();
+        MockV3Aggregator(wethToUSDPricefeedAddress).updateAnswer(2000e8);  // let say price drops from 2653 usd/weth to 2000 usd/weth
+
+        uint256 userHealthFactor = killerEngine.calculateHealthFactor(USER);
+        uint256 IDEAL_HEALTH_FACTOR = killerEngine.getIdealHealthFactor();
+        assert(userHealthFactor < IDEAL_HEALTH_FACTOR);
+
+        console.log("After Price Drop:");
+        console.log("User killer Minted: ", killerEngine.getKillerCoinMinted(USER));
+        console.log("collateral In USD: ", killerEngine.getUSDValue(wethTokenAddress,COLLATERAL_TO_DEPOSIT));
+
+        address liquidator = makeAddr("Liquidator who will try to liquidate USER's position");
+        vm.deal(liquidator,1000 ether);
+
+        vm.startPrank(liquidator);
+        ERC20Mock(wethTokenAddress).mint(liquidator,900 ether);
+        ERC20Mock(wethTokenAddress).approve(address(killerEngine), 900 ether);
+        killerEngine.depositCollateral(wethTokenAddress,900 ether);
+        maxKillerCoinUSERcanStillMint = killerEngine.getAmountOfKillerCoinUserCanStillMint(liquidator);
+        killerEngine.mintKiller(maxKillerCoinUSERcanStillMint);   // liquidator will mint all the killer he can
+        vm.stopPrank();
+
+        uint256 maxDebtToCover = killerEngine.getKillerCoinMinted(USER);  // will be equal to USD as out token is pegged to 1 usd
+        console.log("USER's DebtToPay:",maxDebtToCover);
+        uint256 debtLiquidatorWantsToCover = bound(maxDebtToCover,0,killerEngine.getKillerCoinMinted(liquidator)); // here liquidator will only be able to cover the debt which is less than its minted value
+
+        vm.startPrank(liquidator);
+        killerCoin.approve(address(killerEngine),debtLiquidatorWantsToCover);
+        killerEngine.liquidate(wethTokenAddress,USER,debtLiquidatorWantsToCover);        
+        vm.stopPrank();
         
     }
 

@@ -48,6 +48,7 @@ contract KillerDSCEngine {
     error KillerDSCEngine__HealthFactorIsBroken();
     error KillerDSCEngine__UserISNotUnderCollaterlized(address user);
     error KillerDSCEngine__LiquidationFailed();
+    error KillerDSCEngine__RequiredPriceFeedDontExistInSystem();
 
     /////////////////////////////
     ////    State Variables  ////
@@ -55,7 +56,7 @@ contract KillerDSCEngine {
 
     KillerCoin private immutable i_killer;
     uint256 private constant PRECISION = 1e18;
-    uint256 private constant LIQUIDATION_THRESHOLD = 80;
+    uint256 private constant LIQUIDATION_THRESHOLD = 50;
     uint256 private constant LIQUIDATION_PRECISION = 100;
     uint256 private constant IDEAL_HEALTH_FACTOR = 1e18;
     uint256 private constant LIQUIDATION_BONUS = 10;
@@ -214,7 +215,7 @@ contract KillerDSCEngine {
         ValidAmount(_amount)
     {
         s_depositedCollateral[_from][_tokenCollateral] -= _amount;
-        _revertIfHealthFactorIsBroken(_from);
+        // _revertIfHealthFactorIsBroken(_from);
         emit CollateralRedeemed(_from, _tokenCollateral, _amount);
 
         bool success = IERC20(_tokenCollateral).transfer(_to, _amount);
@@ -227,7 +228,7 @@ contract KillerDSCEngine {
         s_killerMinted[_onBehalfOf] -= _amount;
         emit KillerCoinBurned(_onBehalfOf, _from, _amount);
 
-        bool success = i_killer.transferFrom(_from, address(this), _amount);        
+        bool success = i_killer.transferFrom(_from, address(this), _amount);
         if (!success) {
             revert KillerDSCEngine__TransferedFailed();
         }
@@ -299,6 +300,14 @@ contract KillerDSCEngine {
         return healthFactor;
     }
 
+    function getAmountOfKillerCoinUserCanStillMint(address user) public view returns(uint256 ) {
+        (uint256 collateralDepositedInUSD, uint256 mintedKiller) = getUserInformation(user);
+        uint256 maxKillerCoinUSERcanStillMint =
+            ((collateralDepositedInUSD * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION) - mintedKiller;
+
+        return maxKillerCoinUSERcanStillMint;
+    }
+
     function getKillerTokenAddress() public view returns (address) {
         return address(i_killer);
     }
@@ -309,5 +318,22 @@ contract KillerDSCEngine {
 
     function getLiquidationPrecision() public pure returns (uint256) {
         return LIQUIDATION_PRECISION;
+    }
+
+    function getPriceFeedAddress(address tokenAddress) public view returns (address) {
+        address pricefeedAdd = s_ValidCollateralTokens[tokenAddress];
+
+        if (pricefeedAdd == address(0)) {
+            revert KillerDSCEngine__RequiredPriceFeedDontExistInSystem();
+        }
+        return pricefeedAdd;
+    }
+
+    function getIdealHealthFactor() public pure returns(uint256) {
+        return IDEAL_HEALTH_FACTOR;
+    }
+
+    function getKillerCoinMinted(address user) public view returns(uint256) {
+        return s_killerMinted[user];
     }
 }
