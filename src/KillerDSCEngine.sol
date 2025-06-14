@@ -300,7 +300,7 @@ contract KillerDSCEngine {
         return healthFactor;
     }
 
-    function getAmountOfKillerCoinUserCanStillMint(address user) public view returns(uint256 ) {
+    function getAmountOfKillerCoinUserCanStillMint(address user) public view returns (uint256) {
         (uint256 collateralDepositedInUSD, uint256 mintedKiller) = getUserInformation(user);
         uint256 maxKillerCoinUSERcanStillMint =
             ((collateralDepositedInUSD * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION) - mintedKiller;
@@ -329,11 +329,11 @@ contract KillerDSCEngine {
         return pricefeedAdd;
     }
 
-    function getIdealHealthFactor() public pure returns(uint256) {
+    function getIdealHealthFactor() public pure returns (uint256) {
         return IDEAL_HEALTH_FACTOR;
     }
 
-    function getKillerCoinMinted(address user) public view returns(uint256) {
+    function getKillerCoinMinted(address user) public view returns (uint256) {
         return s_killerMinted[user];
     }
 }

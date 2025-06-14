@@ -212,6 +212,7 @@ contract TestKillerDSCEngine is Test {
 
     function testLiquidatorCanLiquidateTheUnderCollateralizedUserPositionToMakeSystemSolvant()
         public
+        skipFork
         collateralDeposited
     {
         // USER has put 10 ether as collateral
@@ -223,12 +224,12 @@ contract TestKillerDSCEngine is Test {
         killerEngine.mintKiller(maxKillerCoinUSERcanStillMint);
         vm.stopPrank();
 
-        maxKillerCoinUSERcanStillMint = killerEngine.getAmountOfKillerCoinUserCanStillMint(USER);      
+        maxKillerCoinUSERcanStillMint = killerEngine.getAmountOfKillerCoinUserCanStillMint(USER);
         assertEq(maxKillerCoinUSERcanStillMint, 0);
 
         console.log("Before Price drop:");
         console.log("User killer Minted: ", killerEngine.getKillerCoinMinted(USER));
-        console.log("collateral In USD: ", killerEngine.getUSDValue(wethTokenAddress,COLLATERAL_TO_DEPOSIT));
+        console.log("collateral In USD: ", killerEngine.getUSDValue(wethTokenAddress, COLLATERAL_TO_DEPOSIT));
 
         // Lets say Accidently the pricefeed gets compromised Or the price of the collateral falls drastically
         // Which will result the USER to go undercollateralized
@@ -236,8 +237,8 @@ contract TestKillerDSCEngine is Test {
         address priceFeedAddress = killerEngine.getPriceFeedAddress(wethTokenAddress);
         assert(priceFeedAddress == wethToUSDPricefeedAddress);
 
-        (,int256 answer,,,) = MockV3Aggregator(wethToUSDPricefeedAddress).latestRoundData();
-        MockV3Aggregator(wethToUSDPricefeedAddress).updateAnswer(2000e8);  // let say price drops from 2653 usd/weth to 2000 usd/weth
+        (, int256 answer,,,) = MockV3Aggregator(wethToUSDPricefeedAddress).latestRoundData();
+        MockV3Aggregator(wethToUSDPricefeedAddress).updateAnswer(2000e8); // let say price drops from 2653 usd/weth to 2000 usd/weth
 
         uint256 userHealthFactor = killerEngine.calculateHealthFactor(USER);
         uint256 IDEAL_HEALTH_FACTOR = killerEngine.getIdealHealthFactor();
@@ -245,28 +246,27 @@ contract TestKillerDSCEngine is Test {
 
         console.log("After Price Drop:");
         console.log("User killer Minted: ", killerEngine.getKillerCoinMinted(USER));
-        console.log("collateral In USD: ", killerEngine.getUSDValue(wethTokenAddress,COLLATERAL_TO_DEPOSIT));
+        console.log("collateral In USD: ", killerEngine.getUSDValue(wethTokenAddress, COLLATERAL_TO_DEPOSIT));
 
         address liquidator = makeAddr("Liquidator who will try to liquidate USER's position");
-        vm.deal(liquidator,1000 ether);
+        vm.deal(liquidator, 1000 ether);
 
         vm.startPrank(liquidator);
-        ERC20Mock(wethTokenAddress).mint(liquidator,900 ether);
+        ERC20Mock(wethTokenAddress).mint(liquidator, 900 ether);
         ERC20Mock(wethTokenAddress).approve(address(killerEngine), 900 ether);
-        killerEngine.depositCollateral(wethTokenAddress,900 ether);
+        killerEngine.depositCollateral(wethTokenAddress, 900 ether);
         maxKillerCoinUSERcanStillMint = killerEngine.getAmountOfKillerCoinUserCanStillMint(liquidator);
-        killerEngine.mintKiller(maxKillerCoinUSERcanStillMint);   // liquidator will mint all the killer he can
+        killerEngine.mintKiller(maxKillerCoinUSERcanStillMint); // liquidator will mint all the killer he can
         vm.stopPrank();
 
-        uint256 maxDebtToCover = killerEngine.getKillerCoinMinted(USER);  // will be equal to USD as out token is pegged to 1 usd
-        console.log("USER's DebtToPay:",maxDebtToCover);
-        uint256 debtLiquidatorWantsToCover = bound(maxDebtToCover,0,killerEngine.getKillerCoinMinted(liquidator)); // here liquidator will only be able to cover the debt which is less than its minted value
+        uint256 maxDebtToCover = killerEngine.getKillerCoinMinted(USER); // will be equal to USD as out token is pegged to 1 usd
+        console.log("USER's DebtToPay:", maxDebtToCover);
+        uint256 debtLiquidatorWantsToCover = bound(maxDebtToCover, 0, killerEngine.getKillerCoinMinted(liquidator)); // here liquidator will only be able to cover the debt which is less than its minted value
 
         vm.startPrank(liquidator);
-        killerCoin.approve(address(killerEngine),debtLiquidatorWantsToCover);
-        killerEngine.liquidate(wethTokenAddress,USER,debtLiquidatorWantsToCover);        
+        killerCoin.approve(address(killerEngine), debtLiquidatorWantsToCover);
+        killerEngine.liquidate(wethTokenAddress, USER, debtLiquidatorWantsToCover);
         vm.stopPrank();
-        
     }
 
     modifier collateralDeposited() {
@@ -274,6 +274,13 @@ contract TestKillerDSCEngine is Test {
         ERC20Mock(wethTokenAddress).approve(address(killerEngine), COLLATERAL_TO_DEPOSIT);
         killerEngine.depositCollateral(wethTokenAddress, COLLATERAL_TO_DEPOSIT);
         vm.stopPrank();
+        _;
+    }
+
+    modifier skipFork() {
+        if (block.chainid != 31337) {
+            return;
+        }
         _;
     }
 }
